@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quinfall Map</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+ <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+<script src="scripts/L.Control.Layers.Tree.js"></script>
+<link rel="stylesheet" href="styles/L.Control.Layers.Tree.css"/>
+
+<style>
+.fas.fa-chevron-down {
+    font-size: 16px;
+    color: #333;
+    font-family: 'Arial', sans-serif;
+    display: inline-block;
+    font-weight: normal;
+	color: white;
+}
+
+.fas.fa-chevron-down::before {
+    content: '▼'; 
+    font-size: 16px;
+    font-family: 'Arial', sans-serif;
+	color: white;
+}
+	
+.fas.fa-chevron-right {
+    font-size: 16px;
+    color: #333; 
+    font-family: 'Arial', sans-serif;
+    display: inline-block;
+    font-weight: normal;
+	color: white;
+}
+
+.fas.fa-chevron-right::before {
+    content: '▼';
+    font-size: 16px;
+    font-family: 'Arial', sans-serif;
+    display: inline-block;
+    transform: rotate(270deg);
+	color: white;
+}
+	
+#map {
+	position: absolute;
+	top: 0px;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	width: 100%;
+}
+
+label {
+	display: inline;
+	margin-bottom: 5px;
+}
+
+.leaflet-popup-content {
+  font-size: 20px;
+}
+		
+.leaflet-control-layers {
+  font-size: 16px;
+  font-family: 'Roboto';
+  
+}
+
+.leaflet-control-layers-expanded {
+    padding: 6px 10px 6px 6px;
+    color: #1e2122;
+    background: #1e2122;
+}
+
+.leaflet-control-layers-overlays {
+  background-color: #1e2122;
+  color: white;
+  padding: 10px;
+  border-radius: 5px;
+}
+
+.leaflet-control-layers-overlays label {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  color: white;
+}
+
+.leaflet-control-layers-overlays img {
+  width: 28px;
+  height: 28px;
+  vertical-align: middle;
+}
+
+.leaflet-control-layers-list {
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
+.leaflet-control-layers-list::-webkit-scrollbar {
+    width: 12px;
+}
+
+.leaflet-control-layers-list::-webkit-scrollbar-track {
+    background: transparent;
+    border-left: 1px solid transparent;
+}
+
+.leaflet-control-layers-list::-webkit-scrollbar-thumb {
+    background-color: rgba(110, 110, 113, 0.7);
+    border-radius: 10px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+}
+
+.leaflet-control-layers input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    width: 20px;
+    height: 20px;
+    border: 2px solid #fff;
+    border-radius: 5px;
+    background-color: #333;
+    display: inline-block;
+    position: relative;
+    cursor: pointer;
+    margin-right: 8px;
+	vertical-align: middle;
+}
+
+.leaflet-control-layers input[type="checkbox"]:checked {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+.leaflet-control-layers input[type="checkbox"]:checked::before {
+    content: '✔';
+    color: white;
+    font-size: 14px;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+</style>
+	
+<script src="scripts/maden.js"></script>
+<script src="scripts/agac.js"></script>
+<script src="scripts/harvest.js"></script>
+</head>
+
+<body>
+<div id="map"></div>
+
+<script>
+(function(l) {
+        if (l.search[1] === '/' ) {
+          var decoded = l.search.slice(1).split('&').map(function(s) { 
+              return s.replace(/~and~/g, '&')
+          }).join('?');
+          window.history.replaceState(null, null,
+              l.pathname.slice(0, -1) + decoded + l.hash
+          );
+        }
+      }(window.location))
+
+
+
+
+const mapWidth = 114688;
+const mapHeight = 73728;
+
+const minX = -28000;
+const maxX = 28000;
+const minY = -18000;
+const maxY = 18000;
+
+function pixelToGameCoords(x, y) {
+    var gameX = minX + (x / mapHeight) * (maxX - minX);
+    var gameY = minY + (y / mapHeight) * (maxY - minY);
+    return [gameY, gameX];
+}
+
+const scaleX = mapWidth / (maxX - minX);
+const scaleY = mapHeight / (maxY - minY);
+var customCRS = L.extend({}, L.CRS.Simple, { transformation: new L.Transformation(scaleX, -minX * scaleX, -scaleY, maxY * scaleY)});
+var map = L.map('map', {zoomControl: false, minZoom: -5, maxZoom: 0, center: [0, 0], zoom: -5, crs: customCRS});
+L.tileLayer('./tiles/{z}/{x}_{y}.jpg', {tileSize: 256, minZoom: -5, maxZoom: 0, noWrap: true}).addTo(map);
+var maxBounds = L.latLngBounds(pixelToGameCoords(0, mapHeight), pixelToGameCoords(mapHeight, 0));
+map.setMaxBounds(maxBounds);
+	
+
+function labelNames(group, subgroup){
+if (group === "Ores"){
+	switch (subgroup) {
+		case "1": return "<img src='icons/mushroomstone.png' width='20' height='20'> Mushroom Stone";
+		case "2": return "<img src='icons/bluealgaestone.png' width='20' height='20'> Blue Algae Stone";
+		case "3": return "<img src='icons/mother-of-pearlstone.png' width='20' height='20'> Mother-of-Pearl Stone";
+		case "4": return "<img src='icons/greenalgaestone.png' width='20' height='20'> Green Algae Stone";
+		case "5": return "<img src='icons/sunstone.png' width='20' height='20'> Sunstone";
+		case "6": return "<img src='icons/redsandstone.png' width='20' height='20'> Red Sandstone";
+		case "7": return "<img src='icons/selenite.png' width='20' height='20'> Selenite";
+		case "8": return "<img src='icons/blacksandstone.png' width='20' height='20'> Black Sandstone";
+		case "9": return "<img src='icons/shinyblackstone.png' width='20' height='20'> Shiny Black Stone";
+		case "10": return "<img src='icons/coal.png' width='20' height='20'> Coal";
+		case "11": return "<img src='icons/lavastone.png' width='20' height='20'> Lava Stone";
+		case "12": return "<img src='icons/duststone.png' width='20' height='20'> Dust Stone";
+		case "13": return "Ice Stone";
+		case "14": return "Snow Stone";
+		case "15": return "Crystal";
+		case "16": return "Blue Spirit Stone";
+		case "17": return "<img src='icons/gold.png' width='20' height='20'> Gold";
+		case "18": return "<img src='icons/diamondstone.png' width='20' height='20'> Diamond Stone";
+		case "19": return "<img src='icons/sapphire.png' width='20' height='20'> Sapphire";
+		case "20": return "<img src='icons/iron.png' width='20' height='20'> Iron";}}
+if (group === "Harvest"){
+	switch (subgroup) {
+		case "1": return "<img src='icons/swampplant.png' width='20' height='20'> Swamp Plant";
+		case "2": return "<img src='icons/swampblueberry.png' width='20' height='20'> Swamp Blueberry";
+		case "3": return "<img src='icons/aquafireleaf.png' width='20' height='20'> Aquafire Leaf";
+		case "4": return "<img src='icons/serpentflower.png' width='20' height='20'> Serpentflower";
+		case "5": return "<img src='icons/lagoonbloom.png' width='20' height='20'> Lagoonbloom";
+		case "6": return "<img src='icons/thornycactus.png' width='20' height='20'> Thorny Cactus";
+		case "7": return "<img src='icons/spinelesscactus.png' width='20' height='20'> Spineless Cactus";
+		case "8": return "<img src='icons/teff.png' width='20' height='20'> Teff Plant";
+		case "9": return "<img src='icons/fireplant.png' width='20' height='20'> Fire Plant";
+		case "10": return "<img src='icons/decayedplant.png' width='20' height='20'> Decayed Plant";
+		case "11": return "<img src='icons/sunflower.png' width='20' height='20'> Sunflower";
+		case "12": return "<img src='icons/glimmerthorn.png' width='20' height='20'> Glimmerthorn";
+		case "13": return "Mysticroot";
+		case "14": return "Primrose";
+		case "15": return "Crystalvine";
+		case "16": return "Sagebrush";
+		case "17": return "<img src='icons/strawberry.png' width='20' height='20'> Strawberry";
+		case "18": return "<img src='icons/healingmushroom.png' width='20' height='20'> Healing Mushroom";
+		case "19": return "<img src='icons/cotton.png' width='20' height='20'> Cotton";}}
+if (group === "Wood"){
+	switch (subgroup) {
+		case "1": return "<img src='icons/alder.png' width='20' height='20'> [Young] Alder";
+		case "2": return "<img src='icons/alder.png' width='20' height='20'> [Mature] Alder";
+		case "3": return "<img src='icons/alder.png' width='20' height='20'> [Old] Alder";
+		case "4": return "<img src='icons/beechweeping.png' width='20' height='20'> [Young] Beech Weeping";
+		case "5": return "<img src='icons/beechweeping.png' width='20' height='20'> [Mature] Beech Weeping";
+		case "6": return "<img src='icons/beechweeping.png' width='20' height='20'> [Old] Beech Weeping";
+		case "7": return "<img src='icons/peppertree.png' width='20' height='20'> [Young] Peppertree";
+		case "8": return "<img src='icons/peppertree.png' width='20' height='20'> [Mature] Peppertree";
+		case "9": return "<img src='icons/peppertree.png' width='20' height='20'> [Old] Peppertree";
+		case "10": return "<img src='icons/sweetgum.png' width='20' height='20'> [Young] Sweetgum";
+		case "11": return "<img src='icons/sweetgum.png' width='20' height='20'> [Mature] Sweetgum";
+		case "12": return "<img src='icons/sweetgum.png' width='20' height='20'> [Old] Sweetgum";
+		case "13": return "<img src='icons/willowpeppermint.png' width='20' height='20'> [Young] Willow Peppermint";
+		case "14": return "<img src='icons/willowpeppermint.png' width='20' height='20'> [Mature] Willow Peppermint";
+		case "15": return "<img src='icons/willowpeppermint.png' width='20' height='20'> [Old] Willow Peppermint";
+		case "16": return "<img src='icons/acacia.png' width='20' height='20'> [Young] Acacia";
+		case "17": return "<img src='icons/acacia.png' width='20' height='20'> [Mature] Acacia";
+		case "18": return "<img src='icons/acacia.png' width='20' height='20'> [Old] Acacia";
+		case "19": return "<img src='icons/palmcoconut.png' width='20' height='20'> [Young] Palm Coconut";
+		case "20": return "<img src='icons/palmcoconut.png' width='20' height='20'> [Mature] Palm Coconut";
+		case "21": return "<img src='icons/palmcoconut.png' width='20' height='20'> [Old] Palm Coconut";
+		case "22": return "<img src='icons/palmyucca.png' width='20' height='20'> [Young] Palm Yucca";
+		case "23": return "<img src='icons/palmyucca.png' width='20' height='20'> [Mature] Palm Yucca";
+		case "24": return "<img src='icons/palmyucca.png' width='20' height='20'> [Old] Palm Yucca";
+		case "25": return "<img src='icons/pinearaucaria.png' width='20' height='20'> [Young] Pine Araucaria";
+		case "26": return "<img src='icons/pinearaucaria.png' width='20' height='20'> [Mature] Pine Araucaria";
+		case "27": return "<img src='icons/pinearaucaria.png' width='20' height='20'> [Old] Pine Araucaria";
+		case "28": return "<img src='icons/queenpalm.png' width='20' height='20'> [Young] Queen Palm";
+		case "29": return "<img src='icons/queenpalm.png' width='20' height='20'> [Mature] Queen Palm";
+		case "30": return "<img src='icons/queenpalm.png' width='20' height='20'> [Old] Queen Palm";
+		case "31": return "<img src='icons/pinealeppo.png' width='20' height='20'> [Young] Pine Aleppo";
+		case "32": return "<img src='icons/pinealeppo.png' width='20' height='20'> [Mature] Pine Aleppo";
+		case "33": return "<img src='icons/pinealeppo.png' width='20' height='20'> [Old] Pine Aleppo";
+		case "34": return "<img src='icons/pineeasternwhite.png' width='20' height='20'> [Young] Pine Eastern White";
+		case "35": return "<img src='icons/pineeasternwhite.png' width='20' height='20'> [Mature] Pine Eastern White";
+		case "36": return "<img src='icons/pineeasternwhite.png' width='20' height='20'> [Old] Pine Eastern White";
+		case "37": return "<img src='icons/hickoryshagbark.png' width='20' height='20'> [Young] Hickory Shagbark";
+		case "38": return "<img src='icons/hickoryshagbark.png' width='20' height='20'> [Mature] Hickory Shagbark";
+		case "39": return "<img src='icons/hickoryshagbark.png' width='20' height='20'> [Old] Hickory Shagbark";
+		case "40": return "<img src='icons/norsespuce.png' width='20' height='20'> [Young] Norse Spuce";
+		case "41": return "<img src='icons/norsespuce.png' width='20' height='20'> [Mature] Norse Spuce";
+		case "42": return "<img src='icons/norsespuce.png' width='20' height='20'> [Old] Norse Spuce";
+		case "43": return "<img src='icons/sprucewhite.png' width='20' height='20'> [Young] Spruce White";
+		case "44": return "<img src='icons/sprucewhite.png' width='20' height='20'> [Mature] Spruce White";
+		case "45": return "<img src='icons/sprucewhite.png' width='20' height='20'> [Old] Spruce White";
+		case "46": return "<img src='icons/birchpaper.png' width='20' height='20'> [Young] Birch Paper";
+		case "47": return "<img src='icons/birchpaper.png' width='20' height='20'> [Mature] Birch Paper";
+		case "48": return "<img src='icons/birchpaper.png' width='20' height='20'> [Old] Birch Paper";
+		case "49": return "<img src='icons/oakwhite.png' width='20' height='20'> [Young] Oak White";
+		case "50": return "<img src='icons/oakwhite.png' width='20' height='20'> [Mature] Oak White";
+		case "51": return "<img src='icons/oakwhite.png' width='20' height='20'> [Old] Oak White";
+		case "52": return "<img src='icons/forestpine.png' width='20' height='20'> [Young] Forest Pine";
+		case "53": return "<img src='icons/forestpine.png' width='20' height='20'> [Mature] Forest Pine";
+		case "54": return "<img src='icons/forestpine.png' width='20' height='20'> [Old] Forest Pine";
+		case "55": return "<img src='icons/sycamore.png' width='20' height='20'> [Young] Sycamore";
+		case "56": return "<img src='icons/sycamore.png' width='20' height='20'> [Mature] Sycamore";
+		case "57": return "<img src='icons/sycamore.png' width='20' height='20'> [Old] Sycamore";
+		}}
+return subgroup;
+};
+
+
+const getRandomColor = () => {
+    return `#${Math.floor(Math.random()*16777215).toString(16)}`;
+};
+
+const createClusterGroup = (points, iconUrl, lableName, randColour) => {
+	const textRegex = />\s*([^<]+)$/;
+	const textMatch = lableName.match(textRegex);
+	if (textMatch) {var labelText = textMatch[1]}
+	else {var labelText = lableName}
+
+	const imgRegex = /<img[^>]+src=['"]([^'"]+)['"]/;
+	const imgMatch = lableName.match(imgRegex);
+	if (imgMatch) {var iconMark = imgMatch[1]}
+	else {var iconMark = "city.png"}
+	
+    const clusterGroup = L.markerClusterGroup({
+	spiderfyOnMaxZoom: false,
+	showCoverageOnHover: true,
+	zoomToBoundsOnClick: false,
+	disableClusteringAtZoom: 0,
+	iconCreateFunction: function(cluster) {
+            const count = cluster.getChildCount();
+			if (imgMatch) {
+            return L.divIcon({
+                html: `
+                    <div style="
+                        position: relative;
+                        width: 40px;
+                        height: 40px;">
+                        <img src=${iconMark} style="
+                            width: 100%;
+                            height: 100%;
+                            border-radius: 50%;">
+                        <span style="
+                            position: absolute;
+                            top: 50%;
+                            left: 50%;
+                            transform: translate(-50%, -50%);
+                            color: white;
+                            font-weight: bold;
+							-webkit-text-stroke: 1.2px black;
+                            font-size: 28px;">${count}</span></div>`,
+                className: 'custom-cluster-icon',
+                iconSize: [50, 50]
+            });
+			}
+			else{return L.divIcon({
+                    html: `
+                        <div style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            background-color: ${randColour};
+                            color: white;
+                            font-weight: bold;
+                            border-radius: 50%;
+                            width: 40px;
+                            height: 40px;
+                            font-size: 20px;">${count}</div>`,
+                    className: 'default-cluster-icon',
+                    iconSize: [50, 50]
+                });};
+        }
+});
+
+
+const customIcon = imgMatch ? L.icon({
+    iconUrl: iconMark,
+    iconSize: [24, 24],
+    iconAnchor: [12, 24],
+    popupAnchor: [0, -24]
+}) : null;
+
+points.forEach(([x, y]) => {
+    let marker;
+
+    if (imgMatch) {
+        marker = L.marker([y, x], { icon: customIcon });
+    } else {
+        marker = L.circleMarker([y, x], {
+            radius: 5,
+            color: randColour,
+            fillOpacity: 1
+        });
+    }
+    marker.bindPopup(`${labelText} ${x}, ${y}`);
+
+    marker.on('mouseover', function () {
+        this.openPopup();
+    });
+
+    marker.on('mouseout', function () {
+        this.closePopup();
+    });
+
+    marker.on('click', () => {
+        selectedRoute.push([x, y]);
+        updateRoute();
+    });
+
+    clusterGroup.addLayer(marker);
+});
+return clusterGroup;
+};
+
+const layersTree = {
+	label: 'Resources',
+	children: [],
+	selectAllCheckbox: 'Un/select all',
+};
+
+function addMarkers(jsonvar) {
+        Object.entries(jsonvar).forEach(([group, subgroups]) => {
+            const groupNode = {
+			collapsed: true,
+                label: group,
+                children: [],
+				selectAllCheckbox: 'Un/select all'
+            };
+            Object.entries(subgroups).forEach(([subgroup, points]) => {
+                const color = "blue";
+                groupNode.children.push({
+                    label: labelNames(group, subgroup),
+                    layer: createClusterGroup(points, color, labelNames(group, subgroup), getRandomColor())
+                });
+            });
+            layersTree.children.push(groupNode);
+        });
+}
+
+addMarkers(maden_res);
+addMarkers(harvest_res);
+addMarkers(agac_res);
+
+const layersControl = L.control.layers.tree(null, layersTree, {
+position: 'topleft',
+	collapsed: false,
+	namedToggle: true,
+	closedSymbol: "<i class=\"fas fa-chevron-right\"><\/i>&nbsp; ",
+	openedSymbol: "<i class=\"fas fa-chevron-down\"><\/i>&nbsp; ",
+	spaceSymbol: "&nbsp;"
+}).addTo(map);
+layersControl.expandTree(false);
+</script>
+</body>
+</html>
